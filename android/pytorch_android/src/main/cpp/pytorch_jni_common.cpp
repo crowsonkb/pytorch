@@ -10,6 +10,54 @@
 
 namespace pytorch_jni {
 
+bool Trace::is_initialized_ = false;
+
+#if defined(TRACE_ENABLED) && defined(__ANDROID__)
+Trace::fp_ATrace_beginSection Trace::ATrace_beginSection = {};
+Trace::fp_ATrace_endSection Trace::ATrace_endSection = {};
+#endif
+
+void Trace::ensureInit() {
+  if (!Trace::is_initialized_) {
+    init();
+    Trace::is_initialized_ = true;
+  }
+}
+
+void Trace::beginSection(const char* name) {
+  Trace::ensureInit();
+#if defined(TRACE_ENABLED) && defined(__ANDROID__)
+  ATrace_beginSection(name);
+#endif
+}
+
+void Trace::endSection() {
+#if defined(TRACE_ENABLED) && defined(__ANDROID__)
+  ATrace_endSection();
+#endif
+}
+
+Trace::Trace(const char* name) {
+  ensureInit();
+  beginSection(name);
+}
+
+Trace::~Trace() {
+  endSection();
+}
+
+void Trace::init() {
+#if defined(TRACE_ENABLED) && defined(__ANDROID__)
+  void* lib = dlopen("libandroid.so", RTLD_NOW || RTLD_LOCAL);
+  if (lib != NULL) {
+    ATrace_beginSection = reinterpret_cast<fp_ATrace_beginSection>(
+        dlsym(lib, "ATrace_beginSection"));
+    ATrace_endSection =
+        reinterpret_cast<fp_ATrace_endSection>(dlsym(lib, "ATrace_endSection"));
+  }
+#endif
+}
+
 // NOTE: Codes must be kept in sync with DType.java.
 // NOTE: Never serialize these, because they can change between releases.
 constexpr static int kTensorDTypeUInt8 = 1;
@@ -186,6 +234,7 @@ public:
 
 facebook::jni::local_ref<JIValue> JIValue::newJIValueFromAtIValue(
     const at::IValue& ivalue) {
+  Trace _s{"jni::JIValue::newJIValueFromAtIValue"};
   if (ivalue.isNone()) {
     static auto jMethodOptionalNull =
         JIValue::javaClassStatic()
@@ -375,6 +424,7 @@ facebook::jni::local_ref<JIValue> JIValue::newJIValueFromAtIValue(
 
 at::IValue JIValue::JIValueToAtIValue(
     facebook::jni::alias_ref<JIValue> jivalue) {
+  Trace _s{"jni::JIValue::JIValueToAtIValue"};
   static const auto typeCodeField =
       JIValue::javaClassStatic()->getField<jint>("mTypeCode");
   const auto typeCode = jivalue->getFieldValue(typeCodeField);
