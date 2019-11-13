@@ -125,9 +125,9 @@ private:
   static const KernelFunction& dispatch_(const DispatchTable& dispatchTable, const ska::flat_hash_map<TensorTypeId, KernelFunction>& backendFallbackKernels, c10::optional<TensorTypeId> dispatch_key);
 
   template<class Return, class... Args>
-  Return doCallUnboxed(const DispatchTable& dispatchTable, const LeftRight<ska::flat_hash_map<TensorTypeId, KernelFunction>>& backendFallbackKernels_, Args... args) const;
+  Return doCallUnboxed(const OperatorHandle& op, const DispatchTable& dispatchTable, const LeftRight<ska::flat_hash_map<TensorTypeId, KernelFunction>>& backendFallbackKernels_, Args... args) const;
   template<class Return, class... Args>
-  Return doCallUnboxedOnly(const DispatchTable& dispatchTable, const LeftRight<ska::flat_hash_map<TensorTypeId, KernelFunction>>& backendFallbackKernels_, Args... args) const;
+  Return doCallUnboxedOnly(const OperatorHandle& op, const DispatchTable& dispatchTable, const LeftRight<ska::flat_hash_map<TensorTypeId, KernelFunction>>& backendFallbackKernels_, Args... args) const;
 
   std::list<OperatorDef> operators_;
   LeftRight<ska::flat_hash_map<OperatorName, OperatorHandle>> operatorLookupTable_;
@@ -176,17 +176,17 @@ inline Return Dispatcher::callUnboxed(const OperatorHandle& op, Args... args) co
   return op.operatorIterator_->op.readDispatchTable([&] (const DispatchTable& dispatchTable) -> Return {
     // TODO This should be a nested lambda instead of a separate function call, but that triggers an internal
     // compiler error on GCC5. Change this once we don't need gcc 5 anymore.
-    return doCallUnboxed<Return, Args...>(dispatchTable, backendFallbackKernels_, std::forward<Args>(args)...);
+    return doCallUnboxed<Return, Args...>(op, dispatchTable, backendFallbackKernels_, std::forward<Args>(args)...);
   });
 }
 
 template<class Return, class... Args>
-inline Return Dispatcher::doCallUnboxed(const DispatchTable& dispatchTable, const LeftRight<ska::flat_hash_map<TensorTypeId, KernelFunction>>& backendFallbackKernels_, Args... args) const {
+inline Return Dispatcher::doCallUnboxed(const OperatorHandle& op, const DispatchTable& dispatchTable, const LeftRight<ska::flat_hash_map<TensorTypeId, KernelFunction>>& backendFallbackKernels_, Args... args) const {
   detail::unused_arg_(args...);  // workaround for a false-positive warning about unused parameters in gcc 5
   return backendFallbackKernels_.read([&] (const ska::flat_hash_map<TensorTypeId, KernelFunction>& backendFallbackKernels) -> Return {
     c10::optional<TensorTypeId> dispatchKey = dispatchTable.dispatchKeyExtractor().getDispatchKeyUnboxed(args...);
     const KernelFunction& kernel = dispatch_(dispatchTable, backendFallbackKernels, dispatchKey);
-    return kernel.template callUnboxed<Return, Args...>(std::forward<Args>(args)...);
+    return kernel.template callUnboxed<Return, Args...>(op, std::forward<Args>(args)...);
   });
 }
 
@@ -198,17 +198,17 @@ inline Return Dispatcher::callUnboxedOnly(const OperatorHandle& op, Args... args
   return op.operatorIterator_->op.readDispatchTable([&] (const DispatchTable& dispatchTable) -> Return {
     // TODO This should be a nested lambda instead of a separate function call, but that triggers an internal
     // compiler error on GCC5. Change this once we don't need gcc 5 anymore.
-    return doCallUnboxedOnly<Return, Args...>(dispatchTable, backendFallbackKernels_, std::forward<Args>(args)...);
+    return doCallUnboxedOnly<Return, Args...>(op, dispatchTable, backendFallbackKernels_, std::forward<Args>(args)...);
   });
 }
 
 template<class Return, class... Args>
-inline Return Dispatcher::doCallUnboxedOnly(const DispatchTable& dispatchTable, const LeftRight<ska::flat_hash_map<TensorTypeId, KernelFunction>>& backendFallbackKernels_, Args... args) const {
+inline Return Dispatcher::doCallUnboxedOnly(const OperatorHandle& op, const DispatchTable& dispatchTable, const LeftRight<ska::flat_hash_map<TensorTypeId, KernelFunction>>& backendFallbackKernels_, Args... args) const {
   detail::unused_arg_(args...);  // workaround for a false-positive warning about unused parameters in gcc 5
   return backendFallbackKernels_.read([&] (const ska::flat_hash_map<TensorTypeId, KernelFunction>& backendFallbackKernels) -> Return {
     c10::optional<TensorTypeId> dispatchKey = dispatchTable.dispatchKeyExtractor().getDispatchKeyUnboxed<Args...>(args...);
     const KernelFunction& kernel = dispatch_(dispatchTable, backendFallbackKernels, dispatchKey);
-    return kernel.template callUnboxedOnly<Return, Args...>(std::forward<Args>(args)...);
+    return kernel.template callUnboxedOnly<Return, Args...>(op, std::forward<Args>(args)...);
   });
 }
 
@@ -218,7 +218,7 @@ inline void Dispatcher::callBoxed(const OperatorHandle& op, Stack* stack) const 
     return backendFallbackKernels_.read([&] (const ska::flat_hash_map<TensorTypeId, KernelFunction>& backendFallbackKernels) {
       c10::optional<TensorTypeId> dispatchKey = dispatchTable.dispatchKeyExtractor().getDispatchKeyBoxed(stack);
       const KernelFunction& kernel = dispatch_(dispatchTable, backendFallbackKernels, dispatchKey);
-      kernel.callBoxed(stack);
+      kernel.callBoxed(op, stack);
     });
   });
 }
